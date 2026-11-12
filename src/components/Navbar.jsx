@@ -1,114 +1,93 @@
-import { Link } from "react-router-dom";
 
-function Navbar() {
+import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { signOut } from "firebase/auth";
+import { auth } from "../firebase/firebaseConfig";
 
-  const role =
-    localStorage.getItem("role");
+function Navbar({ role }) {
+  const navigate = useNavigate();
+  const [error, setError] = useState("");
+  const [loggingOut, setLoggingOut] = useState(false);
 
-  const logout = () => {
+  const logout = async () => {
+    setError("");
+    setLoggingOut(true);
 
-    localStorage.removeItem("role");
-    localStorage.removeItem("email");
+    try {
+      await signOut(auth);
 
-    window.location.href = "/login";
+      localStorage.removeItem("role");
+      localStorage.removeItem("email");
 
+      navigate("/login", { replace: true });
+    } catch (err) {
+      console.error("Logout error:", err);
+      setError("Unable to log out. Please try again.");
+    } finally {
+      setLoggingOut(false);
+    }
   };
 
   return (
-
     <nav className="navbar navbar-expand-lg navbar-dark bg-primary">
-
       <div className="container">
 
-        <Link
-          className="navbar-brand"
-          to="/"
-        >
+        <Link className="navbar-brand" to="/">
           EduAssist AI
         </Link>
 
         <div className="collapse navbar-collapse">
-
-          <ul className="navbar-nav ms-auto">
-
-            {/* Dashboard */}
+          <ul className="navbar-nav ms-auto align-items-center">
 
             <li className="nav-item">
-
-              <Link
-                className="nav-link"
-                to="/"
-              >
+              <Link className="nav-link" to="/">
                 Dashboard
               </Link>
-
             </li>
 
-            {/* Student Only */}
-
+            {/* Assignments are available only to students */}
             {role === "student" && (
-
               <li className="nav-item">
-
-                <Link
-                  className="nav-link"
-                  to="/assignments"
-                >
+                <Link className="nav-link" to="/assignments">
                   Assignments
                 </Link>
-
               </li>
-
             )}
 
-            {/* Both Student & Faculty */}
-
             <li className="nav-item">
-
-              <Link
-                className="nav-link"
-                to="/complaints"
-              >
+              <Link className="nav-link" to="/complaints">
                 Complaints
               </Link>
-
             </li>
 
-            {/* Role Badge */}
-
+            {/* Display the verified role */}
             <li className="nav-item">
-
-              <span
-                className="nav-link text-warning"
-              >
-                {role === "faculty"
-                  ? "Faculty"
-                  : "Student"}
+              <span className="nav-link text-warning fw-bold">
+                {role === "faculty" ? "Faculty" : "Student"}
               </span>
-
             </li>
-
-            {/* Logout */}
 
             <li className="nav-item ms-3">
-
               <button
                 className="btn btn-light btn-sm"
                 onClick={logout}
+                disabled={loggingOut}
               >
-                Logout
+                {loggingOut ? "Logging out..." : "Logout"}
               </button>
-
             </li>
 
           </ul>
-
         </div>
 
+        {error && (
+          <span className="text-white ms-3">
+            {error}
+          </span>
+        )}
+
       </div>
-
     </nav>
-
   );
 }
 

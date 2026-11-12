@@ -1,420 +1,275 @@
+
 import { useEffect, useState } from "react";
-import { collection, getDocs } from "firebase/firestore";
-import { db } from "../firebase/firebaseConfig";
+import {
+  collection,
+  doc,
+  getDoc,
+  onSnapshot,
+  query,
+  where,
+} from "firebase/firestore";
+import { auth, db } from "../firebase/firebaseConfig";
 
-function Dashboard() {
-
-  const role =
-    localStorage.getItem("role");
-
-  const currentUser =
-    localStorage.getItem("email");
-
-  const [totalAssignments, setTotalAssignments] =
-    useState(0);
-
-  const [pendingAssignments, setPendingAssignments] =
-    useState(0);
-
-  const [completedAssignments, setCompletedAssignments] =
-    useState(0);
-
-  const [totalComplaints, setTotalComplaints] =
-    useState(0);
-
-  const [priorityAssignment, setPriorityAssignment] =
-    useState("No Assignments");
+function Dashboard({ role }) {
+  const [assignments, setAssignments] = useState([]);
+  const [complaints, setComplaints] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
+    const user = auth.currentUser;
+    if (!user || !role) return;
 
-    fetchDashboardData();
+    let active = true;
+    let unsubscribeAssignments = () => {};
+    let unsubscribeComplaints = () => {};
 
-  }, []);
+    setLoading(true);
+    setError("");
+    setAssignments([]);
+    setComplaints([]);
 
-  const fetchDashboardData = async () => {
+    if (role === "student") {
+      const assignmentQuery = query(
+        collection(db, "assignments"),
+        where("studentId", "==", user.uid)
+      );
 
-    try {
+      unsubscribeAssignments = onSnapshot(
+        assignmentQuery,
+        (snapshot) => {
+          if (active) {
+            setAssignments(
+              snapshot.docs.map((item) => ({
+                id: item.id,
+                ...item.data(),
+              }))
+            );
+          }
+        },
+        (err) => {
+          console.error("Assignment dashboard error:", err);
+          if (active) setError("Unable to load assignments.");
+        }
+      );
 
-      // ASSIGNMENTS
+      const ownershipQuery = query(
+        collection(db, "complaintOwnership"),
+        where("studentId", "==", user.uid)
+      );
 
-      const assignmentSnapshot =
-        await getDocs(
-          collection(db, "assignments")
-        );
+      unsubscribeComplaints = onSnapshot(
+        ownershipQuery,
+        async (snapshot) => {
+          try {
+            const results = await Promise.all(
+              snapshot.docs.map(async (item) => {
+                const complaint = await getDoc(
+                  doc(db, "complaints", item.id)
+                );
 
-      const assignmentData =
-        assignmentSnapshot.docs.map(
-          (doc) => ({
-            id: doc.id,
-            ...doc.data(),
-          })
-        );
-
-      const filteredAssignments =
-        role === "faculty"
-          ? assignmentData
-          : assignmentData.filter(
-              (item) =>
-                item.studentEmail ===
-                currentUser
+                return complaint.exists()
+                  ? { id: complaint.id, ...complaint.data() }
+                  : null;
+              })
             );
 
-      setTotalAssignments(
-        filteredAssignments.length
+            if (active) {
+              setComplaints(results.filter(Boolean));
+              setLoading(false);
+            }
+          } catch (err) {
+            console.error("Complaint dashboard error:", err);
+            if (active) {
+              setError("Unable to load complaints.");
+              setLoading(false);
+            }
+          }
+        },
+        (err) => {
+          console.error("Ownership dashboard error:", err);
+          if (active) {
+            setError("Unable to load complaints.");
+            setLoading(false);
+          }
+        }
       );
-
-      const pending =
-        filteredAssignments.filter(
-          (item) =>
-            item.status === "Pending"
-        );
-
-      setPendingAssignments(
-        pending.length
-      );
-
-      const completed =
-        filteredAssignments.filter(
-          (item) =>
-            item.status === "Completed"
-        );
-
-      setCompletedAssignments(
-        completed.length
-      );
-
-      if (pending.length > 0) {
-
-        pending.sort(
-          (a, b) =>
-            new Date(a.deadline) -
-            new Date(b.deadline)
-        );
-
-        setPriorityAssignment(
-          pending[0].title
-        );
-
-      }
-
-      // COMPLAINTS
-
-      const complaintSnapshot =
-        await getDocs(
-          collection(db, "complaints")
-        );
-
-      const complaintData =
-        complaintSnapshot.docs.map(
-          (doc) => ({
-            id: doc.id,
-            ...doc.data(),
-          })
-        );
-
-      const filteredComplaints =
-        role === "faculty"
-          ? complaintData
-          : complaintData.filter(
-              (item) =>
-                item.studentEmail ===
-                currentUser
-            );
-
-      setTotalComplaints(
-        filteredComplaints.length
-      );
-
-    } catch (error) {
-
-      console.error(
-        "Dashboard Error:",
-        error
-      );
-
     }
 
-  };
+    if (role === "faculty") {
+      unsubscribeComplaints = onSnapshot(
+        collection(db, "complaints"),
+        (snapshot) => {
+          if (active) {
+            setComplaints(
+              snapshot.docs.map((item) => ({
+                id: item.id,
+                ...item.data(),
+              }))
+            );
+            setLoading(false);
+          }
+        },
+        (err) => {
+          console.error("Faculty dashboard error:", err);
+          if (active) {
+            setError("Unable to load complaints.");
+            setLoading(false);
+          }
+        }
+      );
+    }
+
+    return () => {
+      active = false;
+      unsubscribeAssignments();
+      unsubscribeComplaints();
+    };
+  }, [role]);
+
+  const totalAssignments = assignments.length;
+
+  const pending = assignments.filter(
+    (item) => item.status === "Pending"
+  );
+
+  const completed = assignments.filter(
+    (item) => item.status === "Completed"
+  );
+
+  const totalComplaints = complaints.length;
+
+  const openComplaints = complaints.filter(
+    (item) => item.status === "Open"
+  ).length;
+
+  const resolvedComplaints = complaints.filter(
+    (item) => item.status === "Resolved"
+  ).length;
+
+  const priorityAssignment =
+    [...pending].sort(
+      (a, b) => new Date(a.deadline) - new Date(b.deadline)
+    )[0]?.title || "No Pending Assignments";
 
   return (
-
     <div className="container mt-4">
-
       <h1>EduAssist AI</h1>
 
-      <p>
-        AI-Powered Academic Tracking &
-        Student Support Platform
-      </p>
+      <p>AI-Powered Academic Tracking & Student Support Platform</p>
 
       <p>
-
-        Logged in as:
-
-        <strong>
-
-          {" "}
-          {role === "faculty"
-            ? "Faculty"
-            : "Student"}
-
-        </strong>
-
+        Logged in as: <strong>{role === "faculty" ? "Faculty" : "Student"}</strong>
       </p>
 
-      {/* FACULTY DASHBOARD */}
-
-      {role === "faculty" ? (
-
-        <>
-
-          <div className="row">
-
-            <div className="col-md-6">
-
-              <div className="card p-3 shadow">
-
-                <h5>
-                  Total Complaints
-                </h5>
-
-                <h2>
-                  {totalComplaints}
-                </h2>
-
-              </div>
-
-            </div>
-
-            <div className="col-md-6">
-
-              <div className="card p-3 shadow">
-
-                <h5>
-                  Faculty Portal
-                </h5>
-
-                <h2>
-                  Active
-                </h2>
-
-              </div>
-
-            </div>
-
-          </div>
-
-          <div className="card mt-4 shadow">
-
-            <div className="card-body">
-
-              <h4>
-                👨‍🏫 Faculty Dashboard
-              </h4>
-
-              <p>
-
-                Review student
-                complaints and
-                resolve issues.
-
-              </p>
-
-              <ul>
-
-                <li>
-                  View all complaints
-                </li>
-
-                <li>
-                  Mark complaints
-                  resolved
-                </li>
-
-                <li>
-                  Monitor student
-                  issues
-                </li>
-
-              </ul>
-
-            </div>
-
-          </div>
-
-        </>
-
-      ) : (
-
-        /* STUDENT DASHBOARD */
-
-        <>
-
-          <div className="row">
-
-            <div className="col-md-3">
-
-              <div className="card p-3 shadow">
-
-                <h5>
-                  Total Assignments
-                </h5>
-
-                <h2>
-                  {totalAssignments}
-                </h2>
-
-              </div>
-
-            </div>
-
-            <div className="col-md-3">
-
-              <div className="card p-3 shadow">
-
-                <h5>
-                  Pending
-                </h5>
-
-                <h2>
-                  {pendingAssignments}
-                </h2>
-
-              </div>
-
-            </div>
-
-            <div className="col-md-3">
-
-              <div className="card p-3 shadow">
-
-                <h5>
-                  Completed
-                </h5>
-
-                <h2>
-                  {completedAssignments}
-                </h2>
-
-              </div>
-
-            </div>
-
-            <div className="col-md-3">
-
-              <div className="card p-3 shadow">
-
-                <h5>
-                  Complaints
-                </h5>
-
-                <h2>
-                  {totalComplaints}
-                </h2>
-
-              </div>
-
-            </div>
-
-          </div>
-
-          <div className="card mt-4 shadow">
-
-            <div className="card-body">
-
-              <h4>
-                🤖 AI Smart Reminder
-              </h4>
-
-              <p>
-
-                You have{" "}
-                {pendingAssignments}{" "}
-                pending assignments.
-
-              </p>
-
-              <p>
-
-                <strong>
-                  Highest Priority:
-                </strong>
-
-                <br />
-
-                {priorityAssignment}
-
-              </p>
-
-              <p>
-
-                <strong>
-                  Suggested Plan:
-                </strong>
-
-                <br />
-
-                Complete{" "}
-                {priorityAssignment}{" "}
-                first and then
-                continue with
-                remaining assignments.
-
-              </p>
-
-            </div>
-
-          </div>
-
-          <div className="card mt-4 shadow">
-
-            <div className="card-body">
-
-              <h4>
-                📈 AI Workload Analysis
-              </h4>
-
-              <p>
-
-                Based on your
-                current records,
-                you have{" "}
-                {pendingAssignments}
-                {" "}pending assignments
-                and{" "}
-                {totalComplaints}
-                {" "}active complaints.
-
-              </p>
-
-              <p>
-
-                <strong>
-
-                  Workload Level:
-
-                  {" "}
-
-                  {pendingAssignments >= 5
-                    ? "High"
-                    : pendingAssignments >= 3
-                    ? "Medium"
-                    : "Low"}
-
-                </strong>
-
-              </p>
-
-            </div>
-
-          </div>
-
-        </>
-
+      {error && (
+        <div className="alert alert-danger">{error}</div>
       )}
 
-    </div>
+      {loading && <p>Loading dashboard...</p>}
 
+      {role === "faculty" ? (
+        <>
+          <div className="row g-3">
+            {[
+              ["Total Complaints", totalComplaints],
+              ["Open Complaints", openComplaints],
+              ["Resolved Complaints", resolvedComplaints],
+            ].map(([label, value]) => (
+              <div className="col-md-4" key={label}>
+                <div className="card p-3 shadow h-100">
+                  <h5>{label}</h5>
+                  <h2>{value}</h2>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="card mt-4 shadow">
+            <div className="card-body">
+              <h4>👨‍🏫 Faculty Dashboard</h4>
+              <p>Review student complaints and resolve issues.</p>
+              <ul>
+                <li>View all complaints</li>
+                <li>Mark complaints resolved</li>
+                <li>Monitor open and resolved complaints</li>
+              </ul>
+            </div>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="row g-3">
+            {[
+              ["Total Assignments", totalAssignments],
+              ["Pending Assignments", pending.length],
+              ["Completed Assignments", completed.length],
+              ["My Complaints", totalComplaints],
+            ].map(([label, value]) => (
+              <div className="col-md-3" key={label}>
+                <div className="card p-3 shadow h-100">
+                  <h5>{label}</h5>
+                  <h2>{value}</h2>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="row g-3 mt-1">
+            {[
+              ["Open Complaints", openComplaints],
+              ["Resolved Complaints", resolvedComplaints],
+            ].map(([label, value]) => (
+              <div className="col-md-6" key={label}>
+                <div className="card p-3 shadow h-100">
+                  <h5>{label}</h5>
+                  <h2>{value}</h2>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="card mt-4 shadow">
+            <div className="card-body">
+              <h4>🤖 AI Smart Reminder</h4>
+              <p>You have {pending.length} pending assignments.</p>
+              <p>
+                <strong>Highest Priority:</strong>
+                <br />
+                {priorityAssignment}
+              </p>
+              <p>
+                <strong>Suggested Plan:</strong>
+                <br />
+                {pending.length > 0
+                  ? `Complete ${priorityAssignment} first, then continue with remaining assignments.`
+                  : "You have no pending assignments."}
+              </p>
+            </div>
+          </div>
+
+          <div className="card mt-4 shadow">
+            <div className="card-body">
+              <h4>📈 AI Workload Analysis</h4>
+              <p>
+                You have {pending.length} pending assignments and{" "}
+                {openComplaints} open complaints.
+              </p>
+              <p>
+                <strong>
+                  Workload Level:{" "}
+                  {pending.length >= 5
+                    ? "High"
+                    : pending.length >= 3
+                    ? "Medium"
+                    : "Low"}
+                </strong>
+              </p>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 

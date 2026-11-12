@@ -1,283 +1,203 @@
-import { useEffect, useState } from "react";  //useState is used to store the data of that changes and useEffect runs code automatically
+
+import { useCallback, useEffect, useState } from "react";
+
 import {
-  collection,   //selects the fireabase collection
-  getDocs,  //reads documents from firebase
-  addDoc      //adds documents to firebase
+  collection,
+  getDocs,
+  addDoc,
+  query,
+  where,
 } from "firebase/firestore";
 
-import { db } from "../firebase/firebaseConfig";  //imports the database from firebaseConfig.js
+import { auth, db } from "../firebase/firebaseConfig";
 
-function Assignments() {  //creates assignments page
-
+function Assignments() {
   const [assignments, setAssignments] = useState([]);
 
   const [title, setTitle] = useState("");
   const [subject, setSubject] = useState("");
   const [deadline, setDeadline] = useState("");
 
-  const currentUser =
-    localStorage.getItem("email");  // login the mail
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
-  const fetchAssignments = async () => {  //loads assignments from firestore
+  const currentUser = auth.currentUser;
+  const userId = currentUser?.uid;
 
-    try {
-
-      const querySnapshot =
-        await getDocs(   //reads all assignments from firebase
-          collection(db, "assignments")
-        );
-
-      const data =
-        querySnapshot.docs.map(
-          (doc) => ({  //converts them into js objects
-            id: doc.id,
-            ...doc.data(),
-          })
-        );
-
-      console.log(
-        "Current User:",  //for debugging whether the localstorage return the correct email or not
-        currentUser
-      );
-
-      console.log(
-        "Firebase Data:",  // to verify firebase returning the correct data
-        data
-      );
-
-      const filteredData =
-        data.filter(   //filter is used to filter all the assignmets that are present to give only the user assignments
-          (item) =>
-            item.studentEmail ===  //filters and give the data of the current user only
-            currentUser
-        );
-
-      console.log(
-        "Filtered Data:",  // to verify the filter is working correctly or not
-        filteredData
-      );
-
-      setAssignments(
-        filteredData  //before assignments were empty now they are filled with the filtered data
-      );
-
-    } catch (error) {
-
-      console.error(
-        "Error fetching assignments:",  //above is about fetching the assignments if there is a error then it catches it and returns error
-        error
-      );
-
-    }
-
-  };
-
-  useEffect(() => {   //useeffect runs code automatically when the page loads
-
-    fetchAssignments();
-
-  }, []);  //[] empty dependency array means it runs only once when the component mounts 
-//without [] it would cause infinite loop
-  
-  const saveAssignment = async () => {  // if is done when the add assignment is done
-
-    if (
-      !title ||
-      !subject ||
-      !deadline   //if the above data is not there then it gives alert to fill in all the details
-    ) {
-
-      alert(
-        "Please fill all fields"
-      );
-
+  // Fetch assignments belonging to the logged-in student.
+  const fetchAssignments = useCallback(async () => {
+    if (!userId) {
+      setAssignments([]);
+      setError("Please log in to view assignments.");
+      setLoading(false);
       return;
-
     }
 
+    setLoading(true);
+    setError("");
+
     try {
-
-      await addDoc(
-        collection(db, "assignments"),  //it means insert into the assignments collection in firebase
-        {
-          title,
-          subject,
-          deadline,
-
-          status: "Pending",
-
-          createdAt:
-            new Date()  //get new date and time
-              .toISOString()  //to covert into the standard form
-              .split("T")[0],// split them into two parts and take the first part only which contains the date
-
-          studentEmail:
-            currentUser,
-        }
+      const assignmentsQuery = query(
+        collection(db, "assignments"),
+        where("studentId", "==", userId)
       );
 
-      alert(
-        "Assignment Added!"
+      const snapshot = await getDocs(assignmentsQuery);
+
+      const data = snapshot.docs.map((document) => ({
+        id: document.id,
+        ...document.data(),
+      }));
+
+      setAssignments(data);
+    } catch (err) {
+      console.error("Error fetching assignments:", err);
+
+      setError(
+        "Unable to load assignments. Check database permissions."
       );
+    } finally {
+      setLoading(false);
+    }
+  }, [userId]);
+
+  // Load assignments when the logged-in student changes.
+  useEffect(() => {
+    fetchAssignments();
+  }, [fetchAssignments]);
+
+  // Save a new assignment.
+  const saveAssignment = async () => {
+    if (!title.trim() || !subject.trim() || !deadline) {
+      setError("Please fill all fields.");
+      return;
+    }
+
+    const user = auth.currentUser;
+
+    if (!user?.uid || !user?.email) {
+      setError("Please log in again.");
+      return;
+    }
+
+    if (saving) return;
+
+    setSaving(true);
+    setError("");
+
+    try {
+      await addDoc(collection(db, "assignments"), {
+        title: title.trim(),
+        subject: subject.trim(),
+        deadline,
+        status: "Pending",
+        createdAt: new Date().toISOString().split("T")[0],
+        studentEmail: user.email,
+        studentId: user.uid,
+      });
 
       setTitle("");
-      setSubject("");  //used to fetch another new assignment
+      setSubject("");
       setDeadline("");
 
-      fetchAssignments();
+      await fetchAssignments();
+    } catch (err) {
+      console.error("Error saving assignment:", err);
 
-    } catch (error) {
-
-      console.error(
-        "Error saving assignment:",
-        error
+      setError(
+        "Unable to save assignment. Check database permissions."
       );
-
+    } finally {
+      setSaving(false);
     }
-
   };
 
   return (
+    <div className="container mt-4">
+      <h1>Assignments</h1>
 
-    <div className="container mt-4">  
-
-      <h1>
-        Assignments
-      </h1>
+      {error && (
+        <div className="alert alert-danger">
+          {error}
+        </div>
+      )}
 
       <div className="card p-4 shadow mt-3">
-
-        <h4>
-          Add Assignment
-        </h4>
+        <h4>Add Assignment</h4>
 
         <input
           className="form-control mb-3"
           placeholder="Assignment Title"
           value={title}
-          onChange={(e) =>
-            setTitle(
-              e.target.value
-            )
-          }
+          onChange={(e) => setTitle(e.target.value)}
         />
 
         <input
           className="form-control mb-3"
           placeholder="Subject"
           value={subject}
-          onChange={(e) =>
-            setSubject(
-              e.target.value
-            )
-          }
+          onChange={(e) => setSubject(e.target.value)}
         />
 
         <input
           type="date"
           className="form-control mb-3"
           value={deadline}
-          onChange={(e) =>
-            setDeadline(
-              e.target.value
-            )
-          }
+          onChange={(e) => setDeadline(e.target.value)}
         />
 
         <button
           className="btn btn-primary"
           onClick={saveAssignment}
+          disabled={saving}
         >
-          Add Assignment
+          {saving ? "Saving..." : "Add Assignment"}
         </button>
-
       </div>
 
       <div className="card p-4 shadow mt-4">
+        <h4>My Assignments</h4>
 
-        <h4>
-          My Assignments
-        </h4>
+        {loading ? (
+          <p>Loading assignments...</p>
+        ) : (
+          <div className="table-responsive">
+            <table className="table table-bordered table-striped">
+              <thead>
+                <tr>
+                  <th>Title</th>
+                  <th>Subject</th>
+                  <th>Deadline</th>
+                  <th>Status</th>
+                  <th>Created At</th>
+                </tr>
+              </thead>
 
-        <table className="table table-bordered table-striped">
-
-          <thead>
-
-            <tr>
-
-              <th>Title</th>
-
-              <th>Subject</th>
-
-              <th>Deadline</th>
-
-              <th>Status</th>
-
-              <th>Created At</th>
-
-            </tr>
-
-          </thead>
-
-          <tbody>
-
-            {assignments.length > 0 ? (
-
-              assignments.map(
-                (item) => (
-
-                  <tr key={item.id}>
-
-                    <td>
-                      {item.title}
+              <tbody>
+                {assignments.length > 0 ? (
+                  assignments.map((item) => (
+                    <tr key={item.id}>
+                      <td>{item.title}</td>
+                      <td>{item.subject}</td>
+                      <td>{item.deadline}</td>
+                      <td>{item.status}</td>
+                      <td>{item.createdAt}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={5} className="text-center">
+                      No assignments found
                     </td>
-
-                    <td>
-                      {item.subject}
-                    </td>
-
-                    <td>
-                      {item.deadline}
-                    </td>
-
-                    <td>
-                      {item.status}
-                    </td>
-
-                    <td>
-                      {item.createdAt}
-                    </td>
-
                   </tr>
-
-                )
-              )
-
-            ) : (
-
-              <tr>
-
-                <td
-                  colSpan="5"
-                  className="text-center"
-                >
-
-                  No assignments found
-
-                </td>
-
-              </tr>
-
-            )}
-
-          </tbody>
-
-        </table>
-
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
-
     </div>
-
   );
 }
 
