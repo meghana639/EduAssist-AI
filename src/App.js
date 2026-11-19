@@ -114,6 +114,10 @@ function App() {
       )}
 
       <Routes>
+        <Route
+  path="/demo/faculty"
+  element={<DemoDashboard role="faculty" />}
+/>
   <Route
     path="/login"
     element={

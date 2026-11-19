@@ -166,6 +166,16 @@ function Login() {
     🚀 Try Student Demo
   </button>
 
+
+<button
+  type="button"
+  className="btn btn-outline-primary w-100 mt-2"
+  onClick={() => navigate("/demo/faculty")}
+>
+  👨‍🏫 Try Faculty Demo
+</button>
+
+
   <small className="d-block text-muted mt-2">
     No registration required • Sample data only
   </small>
