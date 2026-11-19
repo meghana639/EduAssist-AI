@@ -152,6 +152,25 @@ function Login() {
         >
           {loading ? "Logging in..." : "Login"}
         </button>
+
+<div className="text-center mt-3">
+  <p className="text-muted mb-2">
+    Want to explore EduAssist AI without registering?
+  </p>
+
+  <button
+    type="button"
+    className="btn btn-outline-success w-100"
+    onClick={() => navigate("/demo")}
+  >
+    🚀 Try Student Demo
+  </button>
+
+  <small className="d-block text-muted mt-2">
+    No registration required • Sample data only
+  </small>
+</div>
+
       </div>
     </div>
   );

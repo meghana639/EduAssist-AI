@@ -1,4 +1,4 @@
-
+import DemoDashboard from "./pages/DemoDashboard";
 import { useEffect, useState } from "react";
 import {
   BrowserRouter,
@@ -13,7 +13,8 @@ import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "./firebase/firebaseConfig";
 
 import Navbar from "./components/Navbar";
-import Login from "./pages/Login";
+import Login from "./pages/LoginTemp";
+import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
 import Assignments from "./pages/Assignments";
 import Complaints from "./pages/Complaints";
@@ -113,49 +114,62 @@ function App() {
       )}
 
       <Routes>
-        <Route
-          path="/login"
-          element={
-            isLoggedIn
-              ? <Navigate to="/" replace />
-              : user
-                ? null
-                : <Login />
-          }
-        />
+  <Route
+    path="/login"
+    element={
+      isLoggedIn
+        ? <Navigate to="/" replace />
+        : user
+        ? null
+        : <Login />
+    }
+  />
 
-        <Route
-          path="/"
-          element={
-            isLoggedIn
-              ? <Dashboard role={role} />
-              : <Navigate to="/login" replace />
-          }
-        />
+  <Route
+    path="/register"
+    element={
+      isLoggedIn
+        ? <Navigate to="/" replace />
+        : user
+        ? null
+        : <Register />
+    }
+  />
 
-        <Route
-          path="/assignments"
-          element={
-            role === "student"
-              ? <Assignments />
-              : <Navigate to="/" replace />
-          }
-        />
+  <Route
+    path="/demo"
+    element={<DemoDashboard />}
+  />
 
-        <Route
-          path="/complaints"
-          element={
-            isLoggedIn
-              ? <Complaints role={role} />
-              : <Navigate to="/login" replace />
-          }
-        />
+  <Route
+    path="/"
+    element={
+      isLoggedIn
+        ? <Dashboard role={role} />
+        : <Navigate to="/login" replace />
+    }
+  />
 
-        <Route
-          path="*"
-          element={<Navigate to="/" replace />}
-        />
-      </Routes>
+  <Route
+    path="/assignments"
+    element={
+      role === "student"
+        ? <Assignments />
+        : <Navigate to="/" replace />
+    }
+  />
+
+  <Route
+    path="/complaints"
+    element={
+      isLoggedIn
+        ? <Complaints role={role} />
+        : <Navigate to="/login" replace />
+    }
+  />
+
+  <Route path="*" element={<Navigate to="/" replace />} />
+</Routes>
     </BrowserRouter>
   );
 }
